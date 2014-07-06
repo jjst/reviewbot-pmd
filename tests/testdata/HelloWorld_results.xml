@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pmd version="5.1.1" timestamp="2014-07-06T19:24:58.613">
+<file name="tests/testdata/HelloWorld.java">
+<violation beginline="1" endline="5" begincolumn="8" endcolumn="1" rule="NoPackage" ruleset="Naming" externalInfoUrl="http://pmd.sourceforge.net/pmd-5.1.1/rules/java/naming.html#NoPackage" priority="3">
+All classes and interfaces must belong to a named package
+</violation>
+<violation beginline="1" endline="5" begincolumn="25" endcolumn="1" rule="UseUtilityClass" ruleset="Design" class="HelloWorld" externalInfoUrl="http://pmd.sourceforge.net/pmd-5.1.1/rules/java/design.html#UseUtilityClass" priority="3">
+All methods are static.  Consider using a utility class instead. Alternatively, you could add a private constructor or make the class abstract to silence this warning.
+</violation>
+<violation beginline="1" endline="5" begincolumn="8" endcolumn="1" rule="CommentRequired" ruleset="Comments" externalInfoUrl="http://pmd.sourceforge.net/pmd-5.1.1/rules/java/comments.html#CommentRequired" priority="3">
+headerCommentRequirement Required
+</violation>
+<violation beginline="2" endline="2" begincolumn="29" endcolumn="41" rule="MethodArgumentCouldBeFinal" ruleset="Optimization" class="HelloWorld" method="main" variable="args" externalInfoUrl="http://pmd.sourceforge.net/pmd-5.1.1/rules/java/optimizations.html#MethodArgumentCouldBeFinal" priority="3">
+Parameter 'args' is not assigned and could be declared final
+</violation>
+<violation beginline="2" endline="4" begincolumn="19" endcolumn="5" rule="CommentRequired" ruleset="Comments" class="HelloWorld" externalInfoUrl="http://pmd.sourceforge.net/pmd-5.1.1/rules/java/comments.html#CommentRequired" priority="3">
+publicMethodCommentRequirement Required
+</violation>
+<violation beginline="3" endline="3" begincolumn="9" endcolumn="26" rule="SystemPrintln" ruleset="Java Logging" class="HelloWorld" method="main" externalInfoUrl="http://pmd.sourceforge.net/pmd-5.1.1/rules/java/logging-java.html#SystemPrintln" priority="2">
+System.out.print is used
+</violation>
+</file>
+</pmd>
