@@ -5,16 +5,16 @@ from nose.plugins.attrib import attr
 from reviewbotpmd.pmd import *
 import xml.etree.ElementTree as ElementTree
 
-java_source_path = os.path.join(os.path.dirname(__file__), 
+java_source_path = os.path.join(os.path.dirname(__file__),
                                 'testdata/HelloWorld.java')
-invalid_source_path = os.path.join(os.path.dirname(__file__), 
+invalid_source_path = os.path.join(os.path.dirname(__file__),
                                    'testdata/IDontExist.java')
 
 @attr('slow')
 def test_run_pmd_creates_file():
     results_file_path = run_pmd(java_source_path)
     assert os.path.exists(results_file_path)
-    
+
 @attr('slow')
 def test_run_pmd_creates_valid_pmd_result():
     results_file_path = run_pmd(java_source_path)
@@ -30,23 +30,34 @@ def test_run_pmd_with_invalid_source_file():
     assert_raises(ElementTree.ParseError, ElementTree.parse, results_file_path)
 
 def test_result_from_xml():
-    pmd_result_path = os.path.join(os.path.dirname(__file__), 
+    pmd_result_path = os.path.join(os.path.dirname(__file__),
                                    'testdata/HelloWorld_results.xml')
-    tree = ElementTree.parse(pmd_result_path)
-    root = tree.getroot()
-    file_name = root.find('file').attrib['name']
-    reviewed_file = FileMock(file_name)
-    result = Result.from_xml(pmd_result_path, file_name)
+    result = Result.from_xml(pmd_result_path)
     assert len(result.violations) == 6
 
-def test_result_from_xml_wrong_file():
-    result_path = os.path.join(os.path.dirname(__file__), 
-                               'testdata/HelloWorld_results.xml')
-    wrong_file_name = 'wrong_file_name'
-    assert_raises(ValueError, Result.from_xml, result_path, wrong_file_name)
-
 def test_violation_num_lines():
-    assert Violation(text='', first_line=1, last_line=1).num_lines == 1
+    one_line_violation = Violation(rule='', text='', url='',
+                                   first_line=1, last_line=1)
+    assert one_line_violation.num_lines == 1
+
+def test_post_comments():
+    pmd_result_path = os.path.join(os.path.dirname(__file__),
+                                   'testdata/HelloWorld_results.xml')
+    result = Result.from_xml(pmd_result_path)
+    reviewed_file = FileMock(java_source_path)
+    post_comments(result, reviewed_file)
+    assert len(reviewed_file.comments) == 6
+
+def test_post_comments_comment_format():
+    pmd_result_path = os.path.join(os.path.dirname(__file__),
+                                   'testdata/HelloWorld_results.xml')
+    result = Result.from_xml(pmd_result_path)
+    reviewed_file = FileMock(java_source_path)
+    post_comments(result, reviewed_file)
+    violation = result.violations[0]
+    assert_equals(
+        reviewed_file.comments[0].text,
+        "%s: %s\nMore info: %s" % (violation.rule, violation.text, violation.url))
 
 @attr('slow')
 def test_handle_file():
