@@ -48,33 +48,62 @@ def test_post_comments():
     post_comments(result, reviewed_file)
     assert len(reviewed_file.comments) == 6
 
-def test_post_comments_comment_format():
+def test_post_comments_comment_plain_text():
     pmd_result_path = os.path.join(os.path.dirname(__file__),
                                    'testdata/HelloWorld_results.xml')
     result = Result.from_xml(pmd_result_path)
     reviewed_file = FileMock(java_source_path)
-    post_comments(result, reviewed_file)
+    post_comments(result, reviewed_file, use_markdown=False)
     violation = result.violations[0]
     assert_equals(
         reviewed_file.comments[0].text,
-        "%s: %s\nMore info: %s" % (violation.rule, violation.text, violation.url))
+        "%s: %s\n\nMore info: %s" % (violation.rule,
+                                     violation.text,
+                                     violation.url))
+
+def test_post_comments_comment_markdown():
+    pmd_result_path = os.path.join(os.path.dirname(__file__),
+                                   'testdata/HelloWorld_results.xml')
+    result = Result.from_xml(pmd_result_path)
+    reviewed_file = FileMock(java_source_path)
+    post_comments(result, reviewed_file, use_markdown=True)
+    violation = result.violations[0]
+    assert_equals(
+        reviewed_file.comments[0].text,
+        "[%s](%s): %s" % (violation.rule, violation.url, violation.text))
+
+DEFAULTS_SETTINGS = {'markdown': False}
+
+def pmdtool_with_settings(settings=DEFAULTS_SETTINGS):
+    pmdtool = PMDTool()
+    pmdtool.settings = settings
+    pmdtool.use_markdown = settings['markdown']
+    pmdtool.processed_files = set()
+    pmdtool.ignored_files = set()
+    return pmdtool
 
 @attr('slow')
 def test_handle_file():
-    pmdtool = PMDTool()
+    pmdtool = pmdtool_with_settings()
     reviewed_file = FileMock(java_source_path, java_source_path)
     assert pmdtool.handle_file(reviewed_file) == True
     assert len(reviewed_file.comments) == 6
 
 def test_handle_file_unsupported_file_type():
-    pmdtool = PMDTool()
+    pmdtool = pmdtool_with_settings()
     reviewed_file = FileMock(dest_file='test.php')
     assert pmdtool.handle_file(reviewed_file) == False
 
 def test_handle_file_invalid_file():
-    pmdtool = PMDTool()
+    pmdtool = pmdtool_with_settings()
     reviewed_file = FileMock(dest_file=invalid_source_path)
     assert pmdtool.handle_file(reviewed_file) == False
+
+def test_handle_files():
+    pmdtool = pmdtool_with_settings()
+    reviewed_file = FileMock(java_source_path, java_source_path)
+    pmdtool.handle_files([reviewed_file])
+    assert len(reviewed_file.comments) == 6
 
 Comment = namedtuple('Comment', ['text', 'first_line', 'num_lines'])
 
@@ -89,6 +118,6 @@ class FileMock(object):
         return self.patched_file_path
 
     def comment(self, text, first_line, num_lines=1, issue=None,
-                        original=False):
+                original=False):
         self.comments.append(Comment(text, first_line, num_lines))
 

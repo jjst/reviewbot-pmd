@@ -8,8 +8,27 @@ from reviewbot.tools import Tool
 from reviewbot.tools.process import execute
 from reviewbot.utils import is_exe_in_path
 from reviewbot.processing.filesystem import make_tempfile
+import reviewbot.processing.review as review
 
 from rbtools.api.request import APIError
+
+
+class FileWithMarkdownSupport(review.File):
+    def _comment(self, text, first_line, num_lines, issue):
+        """Add a comment to the list of comments."""
+        data = {
+            'filediff_id': self.id,
+            'first_line': first_line,
+            'num_lines': num_lines,
+            'text': text,
+            'issue_opened': issue,
+            'text_type': 'markdown'
+        }
+        self.review.comments.append(data)
+
+# Monkey-patch File to add markdown support
+review.File = FileWithMarkdownSupport
+
 
 class PMDTool(Tool):
     name = 'PMD Source Code Analyzer'
@@ -19,12 +38,13 @@ class PMDTool(Tool):
                  "potential problems")
     options = [
         {
-            'name': 'debug',
+            'name': 'markdown',
             'field_type': 'django.forms.BooleanField',
             'default': False,
             'field_options': {
-                'label': 'Debug Enabled',
-                'help_text': 'Allow debugger statements',
+                'label': 'Enable Markdown',
+                'help_text': 'Allow ReviewBot to use Markdown in the '
+                             'review body and for comments',
                 'required': False,
             },
         },
@@ -33,7 +53,14 @@ class PMDTool(Tool):
     supported_file_types = ('.java', '.js')
 
     def check_dependencies(self):
+        # We need java installed to run PMD
         return is_exe_in_path('java')
+
+    def handle_files(self, files):
+        self.use_markdown = self.settings['markdown']
+        logging.debug("Markdown is %s" %
+                      ("enabled" if self.use_markdown else "disabled"))
+        super(PMDTool, self).handle_files(files)
 
     def handle_file(self, reviewed_file):
         if not any(reviewed_file.dest_file.lower().endswith(extension)
@@ -41,12 +68,15 @@ class PMDTool(Tool):
             # Ignore the file.
             return False
 
-        logging.debug('PMD will start analyzing file %s' % reviewed_file.dest_file)
+        logging.debug('PMD will start analyzing file %s' %
+                      reviewed_file.dest_file)
         # Careful: get_patched_file_path() returns a different result each
         # time it's called, so we need to cache this value.
         try:
             temp_source_file_path = reviewed_file.get_patched_file_path()
         except APIError:
+            logging.warn("Failed to get patched file for %s - ignoring file" %
+                         reviewed_file.source_file)
             return False
         if not temp_source_file_path:
             return False
@@ -60,7 +90,8 @@ class PMDTool(Tool):
         except ValueError as e:
             logging.error(e.message)
             return False
-        post_comments(pmd_result, reviewed_file)
+        post_comments(
+            pmd_result, reviewed_file, use_markdown=self.use_markdown)
 
         return True
 
@@ -117,8 +148,13 @@ def run_pmd(source_file_path):
     return pmd_result_file_path
 
 
-def post_comments(pmd_result, reviewed_file):
+def post_comments(pmd_result, reviewed_file, use_markdown=False):
     for v in pmd_result.violations:
-        comment = "%s: %s\nMore info: %s" % (v.rule, v.text, v.url)
+        if use_markdown:
+            logging.debug("Posting markdown comment on line %s" % v.first_line)
+            comment = "[%s](%s): %s" % (v.rule, v.url, v.text)
+        else:
+            logging.debug("Posting plain text comment on line %s" % v.first_line)
+            comment = "%s: %s\n\nMore info: %s" % (v.rule, v.text, v.url)
         reviewed_file.comment(comment, v.first_line, v.num_lines)
 
