@@ -3,6 +3,7 @@ from collections import namedtuple
 from nose.tools import *
 from nose.plugins.attrib import attr
 from reviewbotpmd.pmd import *
+import os
 import xml.etree.ElementTree as ElementTree
 
 java_source_path = os.path.join(os.path.dirname(__file__),
@@ -10,14 +11,25 @@ java_source_path = os.path.join(os.path.dirname(__file__),
 invalid_source_path = os.path.join(os.path.dirname(__file__),
                                    'testdata/IDontExist.java')
 
+pmd_install_path = os.environ.get('PMD_INSTALL_PATH', '/opt/pmd/')
+default_settings = {'markdown': False, 'pmd_install_path': pmd_install_path}
+
+def pmdtool_with_settings(settings=default_settings):
+    pmdtool = PMDTool()
+    pmdtool.settings = settings
+    pmdtool._setup(settings)
+    pmdtool.processed_files = set()
+    pmdtool.ignored_files = set()
+    return pmdtool
+
 @attr('slow')
 def test_run_pmd_creates_file():
-    results_file_path = run_pmd(java_source_path)
+    results_file_path = pmdtool_with_settings().run_pmd(java_source_path)
     assert os.path.exists(results_file_path)
 
 @attr('slow')
 def test_run_pmd_creates_valid_pmd_result():
-    results_file_path = run_pmd(java_source_path)
+    results_file_path = pmdtool_with_settings().run_pmd(java_source_path)
     tree = ElementTree.parse(results_file_path)
     root = tree.getroot()
     assert root.tag == 'pmd'
@@ -26,7 +38,7 @@ def test_run_pmd_creates_valid_pmd_result():
 
 def test_run_pmd_with_invalid_source_file():
     assert not os.path.exists(invalid_source_path)
-    results_file_path = run_pmd(invalid_source_path)
+    results_file_path = pmdtool_with_settings().run_pmd(invalid_source_path)
     assert_raises(ElementTree.ParseError, ElementTree.parse, results_file_path)
 
 def test_result_from_xml():
@@ -72,16 +84,6 @@ def test_post_comments_comment_markdown():
         reviewed_file.comments[0].text,
         "[%s](%s): %s" % (violation.rule, violation.url, violation.text))
 
-DEFAULTS_SETTINGS = {'markdown': False}
-
-def pmdtool_with_settings(settings=DEFAULTS_SETTINGS):
-    pmdtool = PMDTool()
-    pmdtool.settings = settings
-    pmdtool.use_markdown = settings['markdown']
-    pmdtool.processed_files = set()
-    pmdtool.ignored_files = set()
-    return pmdtool
-
 @attr('slow')
 def test_handle_file():
     pmdtool = pmdtool_with_settings()
@@ -103,7 +105,17 @@ def test_handle_files():
     pmdtool = pmdtool_with_settings()
     reviewed_file = FileMock(java_source_path, java_source_path)
     pmdtool.handle_files([reviewed_file])
+    assert pmdtool.processed_files == set([reviewed_file.dest_file])
+    assert pmdtool.ignored_files == set()
     assert len(reviewed_file.comments) == 6
+
+def test_handle_files_invalid_pmd_install():
+    pmdtool = pmdtool_with_settings()
+    pmdtool.settings['pmd_install_path'] = 'invalid_path'
+    reviewed_file = FileMock(java_source_path, java_source_path)
+    pmdtool.handle_files([reviewed_file])
+    assert pmdtool.processed_files == set()
+    assert pmdtool.ignored_files == set([reviewed_file.dest_file])
 
 Comment = namedtuple('Comment', ['text', 'first_line', 'num_lines'])
 

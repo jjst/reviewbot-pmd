@@ -29,6 +29,8 @@ class FileWithMarkdownSupport(review.File):
 # Monkey-patch File to add markdown support
 review.File = FileWithMarkdownSupport
 
+class SetupError(Exception):
+    pass
 
 class PMDTool(Tool):
     name = 'PMD Source Code Analyzer'
@@ -48,6 +50,16 @@ class PMDTool(Tool):
                 'required': False,
             },
         },
+        {
+            'name': 'pmd_install_path',
+            'field_type': 'django.forms.CharField',
+            'default': '/opt/pmd/',
+            'field_options': {
+                'label': 'PMD installation path',
+                'help_text': 'Path to the root directory where PMD is '
+                             'installed',
+            },
+        },
     ]
 
     supported_file_types = ('.java', '.js')
@@ -56,10 +68,26 @@ class PMDTool(Tool):
         # We need java installed to run PMD
         return is_exe_in_path('java')
 
-    def handle_files(self, files):
-        self.use_markdown = self.settings['markdown']
+    def _setup(self, settings):
+        self.use_markdown = settings['markdown']
+        self.pmd_script_path = os.path.join(
+            settings['pmd_install_path'], 'bin/run.sh')
+        if not os.path.exists(self.pmd_script_path):
+            raise SetupError("Could not find valid PMD executable at '%s'" %
+                             self.pmd_script_path)
+
         logging.debug("Markdown is %s" %
                       ("enabled" if self.use_markdown else "disabled"))
+
+    def handle_files(self, files):
+        try:
+            self._setup(self.settings)
+        except SetupError as e:
+            # Setup failed, we can't proceeed: mark every file as ignored,
+            # log the error and return
+            self.ignored_files.update(f.dest_file for f in files)
+            logging.error(e.message)
+            return
         super(PMDTool, self).handle_files(files)
 
     def handle_file(self, reviewed_file):
@@ -81,7 +109,7 @@ class PMDTool(Tool):
         if not temp_source_file_path:
             return False
 
-        pmd_result_file_path = run_pmd(temp_source_file_path)
+        pmd_result_file_path = self.run_pmd(temp_source_file_path)
         try:
             pmd_result = Result.from_xml(pmd_result_file_path)
             assert pmd_result.source_file_path == temp_source_file_path
@@ -94,6 +122,21 @@ class PMDTool(Tool):
             pmd_result, reviewed_file, use_markdown=self.use_markdown)
 
         return True
+
+    def run_pmd(self, source_file_path):
+        pmd_result_file_path = make_tempfile(extension='.xml')
+        output = execute(
+            [
+                self.pmd_script_path,
+                'pmd',
+                '-d', source_file_path,
+                '-R', 'rulesets/internal/all-java.xml',
+                '-f', 'xml',
+                '-r', pmd_result_file_path
+            ],
+            split_lines=True,
+            ignore_errors=True)
+        return pmd_result_file_path
 
 class Violation(namedtuple('Violation', 'rule text url first_line last_line')):
     __slots__ = ()
@@ -132,20 +175,6 @@ class Result(object):
 
 
 
-def run_pmd(source_file_path):
-    pmd_result_file_path = make_tempfile(extension='.xml')
-    output = execute(
-        [
-            'pmdtools',
-            'pmd',
-            '-d', source_file_path,
-            '-R', 'rulesets/internal/all-java.xml',
-            '-f', 'xml',
-            '-r', pmd_result_file_path
-        ],
-        split_lines=True,
-        ignore_errors=True)
-    return pmd_result_file_path
 
 
 def post_comments(pmd_result, reviewed_file, use_markdown=False):
