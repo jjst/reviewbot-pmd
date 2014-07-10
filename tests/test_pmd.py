@@ -1,9 +1,9 @@
 import os
 from collections import namedtuple
+from nose import SkipTest
 from nose.tools import *
 from nose.plugins.attrib import attr
 from reviewbotpmd.pmd import *
-import os
 import xml.etree.ElementTree as ElementTree
 
 java_source_path = os.path.join(os.path.dirname(__file__),
@@ -60,6 +60,9 @@ class TestPMDTool(object):
     def setup(self):
         self.pmd = PMDTool()
         pmd_install_path = os.environ.get('PMD_INSTALL_PATH', '/opt/pmd/')
+        if not os.path.exists(pmd_install_path):
+            raise SkipTest("Cannot run run test as no valid "
+                           "$PMD_INSTALL_PATH was provided")
         default_settings = {'markdown': False, 'pmd_install_path': pmd_install_path}
         self.pmd.settings = default_settings
         self.pmd._setup(default_settings)
