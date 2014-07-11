@@ -29,8 +29,10 @@ class FileWithMarkdownSupport(review.File):
 # Monkey-patch File to add markdown support
 review.File = FileWithMarkdownSupport
 
+
 class SetupError(Exception):
     pass
+
 
 class PMDTool(Tool):
     name = 'PMD Source Code Analyzer'
@@ -46,7 +48,7 @@ class PMDTool(Tool):
             'field_options': {
                 'label': 'Enable Markdown',
                 'help_text': 'Allow ReviewBot to use Markdown in the '
-                             'review body and for comments',
+                             'review body and for comments.',
                 'required': False,
             },
         },
@@ -57,7 +59,18 @@ class PMDTool(Tool):
             'field_options': {
                 'label': 'PMD installation path',
                 'help_text': 'Path to the root directory where PMD is '
-                             'installed',
+                             'installed.',
+            },
+        },
+        {
+            'name': 'rulesets',
+            'field_type': 'django.forms.CharField',
+            'default': 'java-basic',
+            'field_options': {
+                'label': 'PMD rulesets',
+                'help_text': 'Comma-separated list of rulesets PMD will use. '
+                             'Either the name or the relative path of the '
+                             'ruleset can be used.',
             },
         },
     ]
@@ -70,6 +83,7 @@ class PMDTool(Tool):
 
     def _setup(self, settings):
         self.use_markdown = settings['markdown']
+        self.rulesets = set(settings['rulesets'].split(','))
         self.pmd_script_path = os.path.join(
             settings['pmd_install_path'], 'bin/run.sh')
         if not os.path.exists(self.pmd_script_path):
@@ -109,9 +123,11 @@ class PMDTool(Tool):
         if not temp_source_file_path:
             return False
 
-        pmd_result_file_path = self.run_pmd(temp_source_file_path)
+        pmd_result_file_path = self.run_pmd(
+            temp_source_file_path, self.rulesets)
         try:
-            pmd_result = Result.from_xml(pmd_result_file_path)
+            pmd_result = Result.from_xml(pmd_result_file_path, 
+                                         temp_source_file_path)
             assert pmd_result.source_file_path == temp_source_file_path
             logging.info('PMD detected %s violations in file %s' %
                          (len(pmd_result.violations), reviewed_file.dest_file))
@@ -123,14 +139,14 @@ class PMDTool(Tool):
 
         return True
 
-    def run_pmd(self, source_file_path):
+    def run_pmd(self, source_file_path, rulesets):
         pmd_result_file_path = make_tempfile(extension='.xml')
         output = execute(
             [
                 self.pmd_script_path,
                 'pmd',
                 '-d', source_file_path,
-                '-R', 'rulesets/internal/all-java.xml',
+                '-R', ','.join(rulesets),
                 '-f', 'xml',
                 '-r', pmd_result_file_path
             ],
@@ -152,15 +168,21 @@ class Result(object):
 
 
     @staticmethod
-    def from_xml(xml_result_path):
+    def from_xml(xml_result_path, source_file_path):
         xml_tree = ElementTree.parse(xml_result_path)
         root = xml_tree.getroot()
         files = root.findall('file')
-        if len(files) != 1:
+        if len(files) > 1:
             raise ValueError("PMD Result should contain results "
                              "for one and only one file")
+        elif not files:
+            # This means that there were no violations in this file
+            return Result(source_file_path)
         file_elem = files.pop()
         file_name = file_elem.attrib['name']
+        if file_name != source_file_path:
+            raise ValueError("PMD result does not contain results for file %s"
+                             % source_file_path)
         result = Result(source_file_path=file_name)
         violations = file_elem.findall('violation')
         for violation in violations:
