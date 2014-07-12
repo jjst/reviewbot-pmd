@@ -23,7 +23,7 @@ invalid_source_path = os.path.join(os.path.dirname(__file__),
                                    'testdata/IDontExist.java')
 
 def test_violation_num_lines():
-    one_line_violation = Violation(rule='', text='', url='',
+    one_line_violation = Violation(rule='', severity=1, text='', url='',
                                    first_line=1, last_line=1)
     assert one_line_violation.num_lines == 1
 
@@ -55,32 +55,6 @@ class TestResult:
         result = Result.from_xml(self.pmd_result_path, java_source_path)
         assert len(result.violations) == 6
 
-    def test_post_comments(self):
-        result = Result.from_xml(self.pmd_result_path, java_source_path)
-        reviewed_file = FileMock(java_source_path)
-        post_comments(result, reviewed_file)
-        assert len(reviewed_file.comments) == 6
-
-    def test_post_comments_comment_plain_text(self):
-        result = Result.from_xml(self.pmd_result_path, java_source_path)
-        reviewed_file = FileMock(java_source_path)
-        post_comments(result, reviewed_file, use_markdown=False)
-        violation = result.violations[0]
-        assert_equals(
-            reviewed_file.comments[0].text,
-            "%s: %s\n\nMore info: %s" % (violation.rule,
-                                         violation.text,
-                                         violation.url))
-
-    def test_post_comments_comment_markdown(self):
-        result = Result.from_xml(self.pmd_result_path, java_source_path)
-        reviewed_file = FileMock(java_source_path)
-        post_comments(result, reviewed_file, use_markdown=True)
-        violation = result.violations[0]
-        assert_equals(
-            reviewed_file.comments[0].text,
-            "[%s](%s): %s" % (violation.rule, violation.url, violation.text))
-
 
 class TestPMDTool(object):
 
@@ -89,7 +63,8 @@ class TestPMDTool(object):
         default_settings = {
             'markdown': False, 
             'pmd_install_path': pmd_install_path,
-            'rulesets': 'java-comments'
+            'rulesets': 'java-comments',
+            'min_severity_for_issue': 5,
         }
         self.num_violations = 2
         self.pmd.settings = default_settings
@@ -146,6 +121,15 @@ class TestPMDTool(object):
         assert self.pmd.ignored_files == set()
         assert len(reviewed_file.comments) == self.num_violations
 
+    def test_handle_files_opens_issues(self):
+        reviewed_file = FileMock(
+            java_source_path, java_source_path, open_issues=True)
+        self.pmd.settings['min_severity_for_issue'] = Severity.MIN
+        self.pmd.handle_files([reviewed_file])
+        assert self.pmd.processed_files == set([reviewed_file.dest_file])
+        assert self.pmd.ignored_files == set()
+        assert all(c.issue == True for c in reviewed_file.comments)
+
     def test_handle_files_invalid_pmd_install(self):
         self.pmd.settings['pmd_install_path'] = 'invalid_path'
         reviewed_file = FileMock(java_source_path, java_source_path)
@@ -153,19 +137,84 @@ class TestPMDTool(object):
         assert self.pmd.processed_files == set()
         assert self.pmd.ignored_files == set([reviewed_file.dest_file])
 
-Comment = namedtuple('Comment', ['text', 'first_line', 'num_lines'])
+    def test_post_comments(self):
+        result = mock_result()
+        reviewed_file = FileMock(java_source_path)
+        self.pmd.post_comments(result, reviewed_file)
+        assert len(reviewed_file.comments) == 2
+
+    def test_post_comments_opens_issues(self):
+        self.pmd.min_severity_for_issue = Severity.MIN
+        result = mock_result()
+        reviewed_file = FileMock(java_source_path, open_issues=True)
+        self.pmd.post_comments(result, reviewed_file)
+        assert len(reviewed_file.comments) == 2
+        assert all(c.issue == True for c in reviewed_file.comments)
+
+    def test_post_comments_open_issues_disabled(self):
+        self.pmd.min_severity_for_issue = Severity.MIN
+        result = mock_result()
+        reviewed_file = FileMock(java_source_path, open_issues=False)
+        self.pmd.post_comments(result, reviewed_file)
+        assert len(reviewed_file.comments) == 2
+        assert all(c.issue == False for c in reviewed_file.comments)
+
+    def test_post_comments_open_issues_max_severity(self):
+        self.pmd.min_severity_for_issue = Severity.MIN
+        result = mock_result()
+        result.violations = [Violation('', Severity.MAX, '', '', 1, 1,)]
+        reviewed_file = FileMock(java_source_path, open_issues=True)
+        self.pmd.post_comments(result, reviewed_file)
+        assert len(reviewed_file.comments) == 1
+        assert all(c.issue == True for c in reviewed_file.comments)
+
+    def test_post_comments_comment_plain_text(self):
+        result = mock_result()
+        reviewed_file = FileMock(java_source_path)
+        self.pmd.post_comments(result, reviewed_file, use_markdown=False)
+        violation = result.violations[0]
+        assert_equals(
+            reviewed_file.comments[0].text,
+            "%s: %s\n\nMore info: %s" % (violation.rule,
+                                         violation.text,
+                                         violation.url))
+
+    def test_post_comments_comment_markdown(self):
+        result = mock_result()
+        reviewed_file = FileMock(java_source_path)
+        self.pmd.post_comments(result, reviewed_file, use_markdown=True)
+        violation = result.violations[0]
+        assert_equals(
+            reviewed_file.comments[0].text,
+            "[%s](%s): %s" % (violation.rule, violation.url, violation.text))
+
+
+def mock_result():
+    v1 = Violation('TestRule1', 1, 'A test rule', 'dummy_url', 1, 10)
+    v2 = Violation('TestRule2', 4, 'Another test rule', 'dummy_url', 14, 14)
+    return Result('', [v1, v2])
+
+
+Comment = namedtuple('Comment', ['text', 'first_line', 'num_lines', 'issue'])
+
 
 class FileMock(object):
 
-    def __init__(self, patched_file_path=None, dest_file=None):
+    class Object:
+        pass
+
+    def __init__(self, patched_file_path=None, dest_file=None, 
+                 open_issues=False):
         self.comments = []
         self.patched_file_path = patched_file_path
         self.dest_file = dest_file
+        self.review = FileMock.Object()
+        self.review.settings = {'open_issues': open_issues}
 
     def get_patched_file_path(self):
         return self.patched_file_path
 
     def comment(self, text, first_line, num_lines=1, issue=None,
                 original=False):
-        self.comments.append(Comment(text, first_line, num_lines))
+        self.comments.append(Comment(text, first_line, num_lines, issue))
 

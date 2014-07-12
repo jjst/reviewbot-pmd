@@ -33,6 +33,13 @@ review.File = FileWithMarkdownSupport
 class SetupError(Exception):
     pass
 
+class Severity(object):
+    """
+    Severity of a violation, ranges from MIN to MAX.
+    """
+    MIN = 1
+    MAX = 5
+    values = range(MIN, MAX + 1)
 
 class PMDTool(Tool):
     name = 'PMD Source Code Analyzer'
@@ -73,6 +80,19 @@ class PMDTool(Tool):
                              'ruleset can be used.',
             },
         },
+        {
+            'name': 'min_severity_for_issue',
+            'field_type': 'django.forms.ChoiceField',
+            'default': Severity.MAX,
+            'field_options': {
+                'label': 'Minimum serverity for open issues',
+                'help_text': 'Minimum severity a violation must be for '
+                             'an issue to be opened if "Open issues" is '
+                             'enabled.',
+                'choices': tuple((i, str(i)) for i in Severity.values),
+                'required': False,
+            },
+        },
     ]
 
     supported_file_types = ('.java', '.js')
@@ -83,6 +103,9 @@ class PMDTool(Tool):
 
     def _setup(self, settings):
         self.use_markdown = settings['markdown']
+        self.min_severity_for_issue = int(settings['min_severity_for_issue'])
+        logging.debug("Will open issues for violations of severity %s or more"
+                      % self.min_severity_for_issue)
         self.rulesets = set(settings['rulesets'].split(','))
         self.pmd_script_path = os.path.join(
             settings['pmd_install_path'], 'bin/run.sh')
@@ -134,7 +157,7 @@ class PMDTool(Tool):
         except ValueError as e:
             logging.error(e.message)
             return False
-        post_comments(
+        self.post_comments(
             pmd_result, reviewed_file, use_markdown=self.use_markdown)
 
         return True
@@ -154,8 +177,23 @@ class PMDTool(Tool):
             ignore_errors=True)
         return pmd_result_file_path
 
-class Violation(namedtuple('Violation', 'rule text url first_line last_line')):
+    def post_comments(self, pmd_result, reviewed_file, use_markdown=False):
+        for v in pmd_result.violations:
+            if use_markdown:
+                comment = "[%s](%s): %s" % (v.rule, v.url, v.text)
+            else:
+                comment = "%s: %s\n\nMore info: %s" % (v.rule, v.text, v.url)
+            open_issue = reviewed_file.review.settings['open_issues'] and \
+                         v.severity >= self.min_severity_for_issue
+            if open_issue:
+                logging.debug("Opening issue for violation %s" % v.rule)
+            reviewed_file.comment(
+                comment, v.first_line, v.num_lines, issue=open_issue)
+
+
+class Violation(namedtuple('Violation', 'rule severity text url first_line last_line')):
     __slots__ = ()
+
     @property
     def num_lines(self):
         return self.last_line - self.first_line + 1
@@ -190,22 +228,12 @@ class Result(object):
             last_line = int(violation.attrib['endline'])
             text = violation.text.strip()
             rule = violation.attrib['rule']
+            severity = int(violation.attrib['priority'])
             url = violation.attrib['externalInfoUrl']
             result.violations.append(
-                Violation(rule, text, url, first_line, last_line))
+                Violation(rule, severity, text, url, first_line, last_line))
         return result
 
 
 
-
-
-def post_comments(pmd_result, reviewed_file, use_markdown=False):
-    for v in pmd_result.violations:
-        if use_markdown:
-            logging.debug("Posting markdown comment on line %s" % v.first_line)
-            comment = "[%s](%s): %s" % (v.rule, v.url, v.text)
-        else:
-            logging.debug("Posting plain text comment on line %s" % v.first_line)
-            comment = "%s: %s\n\nMore info: %s" % (v.rule, v.text, v.url)
-        reviewed_file.comment(comment, v.first_line, v.num_lines)
 
