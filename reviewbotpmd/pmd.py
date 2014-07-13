@@ -97,7 +97,7 @@ class PMDTool(Tool):
         },
     ]
 
-    supported_file_types = ('.java', '.js')
+    supported_file_types = ('.java', '.js', '.xml', '.xsl')
 
     def check_dependencies(self):
         # We need java installed to run PMD
