@@ -76,8 +76,10 @@ class PMDTool(Tool):
             'field_options': {
                 'label': 'PMD rulesets',
                 'help_text': 'Comma-separated list of rulesets PMD will use. '
-                             'Either the name or the relative path of the '
-                             'ruleset can be used.',
+                             'Either the name or the relative path of a '
+                             'ruleset can be used if it is in the Java class '
+                             'path. Otherwise, use the full path to the '
+                             'ruleset file on the filesystem.'
             },
         },
         {
