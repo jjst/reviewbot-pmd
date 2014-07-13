@@ -72,6 +72,20 @@ class TestPMDTool(object):
         self.pmd.processed_files = set()
         self.pmd.ignored_files = set()
 
+    def is_valid_ruleset_file(self, filepath):
+        if not os.path.exists(filepath):
+            return False
+        try:
+            tree = ElementTree.parse(filepath)
+        except ElementTree.ParseError:
+            return False
+        root = tree.getroot()
+        if root.tag != 'pmd':
+            return False
+        file_elems = root.findall('file')
+        return len(file_elems) == 1
+
+
     @attr('slow')
     def test_run_pmd_creates_file(self):
         results_file_path = self.pmd.run_pmd(java_source_path, rulesets=[])
@@ -81,18 +95,29 @@ class TestPMDTool(object):
     def test_run_pmd_invalid_ruleset(self):
         results_file_path = self.pmd.run_pmd(
             java_source_path, rulesets=['invalid-ruleset'])
-        assert os.path.exists(results_file_path)
-        assert_raises(ElementTree.ParseError, ElementTree.parse, results_file_path)
+        assert not self.is_valid_ruleset_file(results_file_path)
+
+
+    @attr('slow')
+    def test_run_pmd_absolute_path_to_ruleset(self):
+        ruleset_full_path = os.path.join(os.path.dirname(__file__),
+            'testdata/test_ruleset.xml')
+        results_file_path = self.pmd.run_pmd(
+            java_source_path, rulesets=[ruleset_full_path])
+        assert self.is_valid_ruleset_file(results_file_path)
+
+    @attr('slow')
+    def test_run_pmd_relative_path_to_ruleset_in_classpath(self):
+        ruleset_path = 'rulesets/java/comments.xml'
+        results_file_path = self.pmd.run_pmd(
+            java_source_path, rulesets=[ruleset_path])
+        assert self.is_valid_ruleset_file(results_file_path)
 
     @attr('slow')
     def test_run_pmd_creates_valid_pmd_result(self):
         results_file_path = self.pmd.run_pmd(
             java_source_path, rulesets=self.pmd.rulesets)
-        tree = ElementTree.parse(results_file_path)
-        root = tree.getroot()
-        assert root.tag == 'pmd'
-        file_elems = root.findall('file')
-        assert len(file_elems) == 1
+        assert self.is_valid_ruleset_file(results_file_path)
 
     def test_run_pmd_with_invalid_source_file(self):
         assert not os.path.exists(invalid_source_path)
