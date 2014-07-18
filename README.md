@@ -10,7 +10,7 @@ Installation
 
 This plugin requires an up-and-running ReviewBoard instance, with the ReviewBot extension enabled and the ReviewBot worker running. See the [ReviewBot installation instructions](https://github.com/reviewboard/ReviewBot#installation) for more information.
 
-You will also need PMD. You can download and install the latest version from [the PMD homepage](http://sourceforge.net/projects/pmd/files/pmd/). Download the archive and extract it somewhere convenient, e.g. '/opt/pmd/'.
+You will also need PMD. You can download and install the latest version from [the PMD homepage](http://pmd.sourceforge.net/). Download the archive and extract it somewhere convenient, e.g. '/opt/pmd/'.
 
 To install the plugin, run the following commands:
 
