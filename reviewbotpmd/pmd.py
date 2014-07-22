@@ -151,7 +151,7 @@ class PMDTool(Tool):
         pmd_result_file_path = self.run_pmd(
             temp_source_file_path, self.rulesets)
         try:
-            pmd_result = Result.from_xml(pmd_result_file_path, 
+            pmd_result = Result.from_xml(pmd_result_file_path,
                                          temp_source_file_path)
             assert pmd_result.source_file_path == temp_source_file_path
             logging.info('PMD detected %s violations in file %s' %
@@ -180,7 +180,7 @@ class PMDTool(Tool):
         return pmd_result_file_path
 
     def post_comments(self, pmd_result, reviewed_file, use_markdown=False):
-        for v in pmd_result.violations:
+        for v in Violation.group_consecutive(pmd_result.violations):
             if use_markdown:
                 comment = "[%s](%s): %s" % (v.rule, v.url, v.text)
             else:
@@ -196,9 +196,46 @@ class PMDTool(Tool):
 class Violation(namedtuple('Violation', 'rule severity text url first_line last_line')):
     __slots__ = ()
 
+    def combine(self, other_violation):
+        """
+        Combine 2 violations together if they can be.
+        """
+        if not self.is_consecutive(other_violation):
+            raise ValueError("Cannot combine non-consecutive violations")
+        first_line = min(self.first_line, other_violation.first_line)
+        last_line = max(self.last_line, other_violation.last_line)
+        return Violation(self.rule, self.severity, self.text, self.url,
+                first_line, last_line)
+
+
     @property
     def num_lines(self):
         return self.last_line - self.first_line + 1
+
+    def is_consecutive(self, v):
+        return (self.text == v.text and
+                self.rule == v.rule and
+                self.url == v.url and
+                self.severity == v.severity and
+                (self.first_line == v.last_line + 1 or
+                 self.last_line + 1 == v.first_line))
+
+    @staticmethod
+    def group_consecutive(violations):
+        if not violations:
+            return []
+        current_group = [violations[0]]
+        groups = [current_group]
+        for i, v in enumerate(violations[1:]):
+            if v.is_consecutive(violations[i]):
+                current_group.append(v)
+            else:
+                current_group = [v]
+                groups.append(current_group)
+        def combine_violations(violations):
+            return reduce(lambda v1, v2: v1.combine(v2), violations)
+        return [combine_violations(violations) for violations in groups]
+
 
 class Result(object):
 

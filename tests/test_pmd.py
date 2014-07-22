@@ -27,6 +27,60 @@ def test_violation_num_lines():
                                    first_line=1, last_line=1)
     assert one_line_violation.num_lines == 1
 
+def test_violation_is_consecutive():
+    violation_text = "Text"
+    v1 = Violation('', 1, violation_text, '', first_line=1, last_line=1)
+    v2 = Violation('', 1, violation_text, '', first_line=2, last_line=2)
+    assert v1.is_consecutive(v2)
+    assert v2.is_consecutive(v1)
+
+def test_violation_is_consecutive_text_different():
+    v1 = Violation('', 1, "Text", '', first_line=1, last_line=1)
+    v2 = Violation('', 1, "Different text", '', first_line=2, last_line=2)
+    assert not v1.is_consecutive(v2)
+    assert not v2.is_consecutive(v1)
+
+def test_violation_combine():
+    violation_text = "Text"
+    v1 = Violation('', 1, violation_text, '', first_line=1, last_line=1)
+    v2 = Violation('', 1, violation_text, '', first_line=2, last_line=2)
+    combined = v1.combine(v2)
+    assert_equals(combined.first_line, 1)
+    assert_equals(combined.last_line, 2)
+    assert_equals(combined.text, violation_text)
+
+def test_violation_combine_not_consecutive():
+    v1 = Violation('', 1, "Banana", '', first_line=1, last_line=1)
+    v2 = Violation('', 1, "Strawberry", '', first_line=2, last_line=2)
+    assert_raises(ValueError, v1.combine, v2)
+
+def test_violation_group_consecutive():
+    violation_text = "Text"
+    v1 = Violation('', 1, violation_text, '', first_line=1, last_line=1)
+    v2 = Violation('', 1, violation_text, '', first_line=2, last_line=2)
+    v1_v2_combined = v1.combine(v2)
+    assert_equals(Violation.group_consecutive([v1, v2]), [v1_v2_combined])
+
+def test_violation_group_consecutive_empty():
+    violation_text = "Text"
+    assert_equals(Violation.group_consecutive([]), [])
+
+def test_violation_group_consecutive_nothing_consecutive():
+    violation_text = "Text"
+    v1 = Violation('', 1, violation_text, '', first_line=1, last_line=1)
+    v2 = Violation('', 1, violation_text, '', first_line=3, last_line=3)
+    v3 = Violation('', 1, violation_text, '', first_line=5, last_line=10)
+    assert_equals(Violation.group_consecutive([v1, v2, v3]), [v1, v2, v3])
+
+def test_violation_group_consecutive_2():
+    violation_text = "Text"
+    v1 = Violation('', 1, violation_text, '', first_line=1, last_line=1)
+    v2 = Violation('', 1, violation_text, '', first_line=2, last_line=2)
+    v3 = Violation('', 1, violation_text, '', first_line=5, last_line=10)
+    v1_v2_combined = v1.combine(v2)
+    assert_equals(Violation.group_consecutive([v1, v2, v3]),
+        [v1_v2_combined, v3])
+
 class TestResult:
 
     @classmethod
@@ -36,7 +90,7 @@ class TestResult:
             cls.testdir, 'HelloWorld_result.xml')
         with open(os.devnull, 'w') as devnull:
             subprocess.check_call(
-                [pmd_script_path, 
+                [pmd_script_path,
                  'pmd',
                  '-d', java_source_path,
                  '-R', 'rulesets/internal/all-java.xml',
@@ -61,7 +115,7 @@ class TestPMDTool(object):
     def setup(self):
         self.pmd = PMDTool()
         default_settings = {
-            'markdown': False, 
+            'markdown': False,
             'pmd_install_path': pmd_install_path,
             'rulesets': 'java-comments',
             'min_severity_for_issue': 5,
@@ -184,8 +238,24 @@ class TestPMDTool(object):
         assert len(reviewed_file.comments) == 2
         assert all(c.issue == False for c in reviewed_file.comments)
 
-    def test_post_comments_open_issues_max_severity(self):
+    def test_post_comments_open_issues_consecutive_violation(self):
         self.pmd.min_severity_for_issue = Severity.MIN
+        result = mock_result()
+        v = result.violations[-1]
+        consecutive_violation = Violation(
+            v.rule, v.severity, v.text,
+            v.url, v.last_line + 1, v.last_line + 5)
+        result.violations.append(consecutive_violation)
+        reviewed_file = FileMock(java_source_path, open_issues=True)
+        self.pmd.post_comments(result, reviewed_file)
+        assert len(reviewed_file.comments) == 2
+        combined_violation_comment = next(c for c in reviewed_file.comments
+                                          if v.text in c.text)
+        assert_equals(combined_violation_comment.first_line, v.first_line)
+        expected_num_lines = consecutive_violation.last_line - v.first_line + 1
+        assert_equals(combined_violation_comment.num_lines, expected_num_lines)
+
+    def test_post_comments_consecutive_violations(self):
         result = mock_result()
         result.violations = [Violation('', Severity.MAX, '', '', 1, 1,)]
         reviewed_file = FileMock(java_source_path, open_issues=True)
@@ -228,7 +298,7 @@ class FileMock(object):
     class Object:
         pass
 
-    def __init__(self, patched_file_path=None, dest_file=None, 
+    def __init__(self, patched_file_path=None, dest_file=None,
                  open_issues=False):
         self.comments = []
         self.patched_file_path = patched_file_path
