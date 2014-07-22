@@ -43,7 +43,7 @@ class Severity(object):
 
 class PMDTool(Tool):
     name = 'PMD Source Code Analyzer'
-    version = '0.1'
+    version = '0.2'
     description=("A Review Bot tool that runs PMD, "
                  "a rule-set based source code analyzer that identifies "
                  "potential problems")
