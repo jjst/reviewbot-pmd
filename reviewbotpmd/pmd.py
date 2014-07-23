@@ -1,11 +1,11 @@
 import os
 import tempfile
 import logging
+import subprocess
 from collections import namedtuple
 import xml.etree.ElementTree as ElementTree
 
 from reviewbot.tools import Tool
-from reviewbot.tools.process import execute
 from reviewbot.utils import is_exe_in_path
 from reviewbot.processing.filesystem import make_tempfile
 import reviewbot.processing.review as review
@@ -31,6 +31,16 @@ review.File = FileWithMarkdownSupport
 
 
 class SetupError(Exception):
+    """
+    An error occuring while setting up the extension and
+    loading the settings.
+    """
+    pass
+
+class PMDError(Exception):
+    """
+    An error occuring while trying to run the PMD command line tool.
+    """
     pass
 
 class Severity(object):
@@ -148,8 +158,12 @@ class PMDTool(Tool):
         if not temp_source_file_path:
             return False
 
-        pmd_result_file_path = self.run_pmd(
-            temp_source_file_path, self.rulesets)
+        try:
+            pmd_result_file_path = self.run_pmd(
+                temp_source_file_path, self.rulesets)
+        except PMDError as e:
+            logging.error(e)
+            return False
         try:
             pmd_result = Result.from_xml(pmd_result_file_path,
                                          temp_source_file_path)
@@ -166,17 +180,21 @@ class PMDTool(Tool):
 
     def run_pmd(self, source_file_path, rulesets):
         pmd_result_file_path = make_tempfile(extension='.xml')
-        output = execute(
-            [
-                self.pmd_script_path,
-                'pmd',
-                '-d', source_file_path,
-                '-R', ','.join(rulesets),
-                '-f', 'xml',
-                '-r', pmd_result_file_path
-            ],
-            split_lines=True,
-            ignore_errors=True)
+        args = (
+            self.pmd_script_path,
+            'pmd',
+            '-d', source_file_path,
+            '-R', ','.join(rulesets),
+            '-f', 'xml',
+            '-r', pmd_result_file_path
+        )
+        process = subprocess.Popen(args,
+                                   stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE)
+        _, stderr = process.communicate()
+        if stderr:
+            raise PMDError("Error running PMD command line tool, command output:\n" + stderr)
         return pmd_result_file_path
 
     def post_comments(self, pmd_result, reviewed_file, use_markdown=False):

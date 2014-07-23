@@ -81,7 +81,7 @@ def test_violation_group_consecutive_2():
     assert_equals(Violation.group_consecutive([v1, v2, v3]),
         [v1_v2_combined, v3])
 
-class TestResult:
+class TestResult(object):
 
     @classmethod
     def setup_class(cls):
@@ -142,15 +142,16 @@ class TestPMDTool(object):
 
     @attr('slow')
     def test_run_pmd_creates_file(self):
-        results_file_path = self.pmd.run_pmd(java_source_path, rulesets=[])
+        results_file_path = self.pmd.run_pmd(java_source_path,
+                                             rulesets=['java-basic'])
         assert os.path.exists(results_file_path)
 
     @attr('slow')
     def test_run_pmd_invalid_ruleset(self):
-        results_file_path = self.pmd.run_pmd(
-            java_source_path, rulesets=['invalid-ruleset'])
-        assert not self.is_valid_ruleset_file(results_file_path)
-
+        assert_raises(PMDError,
+                      self.pmd.run_pmd,
+                      java_source_path,
+                      ['invalid-ruleset-path'])
 
     @attr('slow')
     def test_run_pmd_absolute_path_to_ruleset(self):
@@ -211,6 +212,13 @@ class TestPMDTool(object):
 
     def test_handle_files_invalid_pmd_install(self):
         self.pmd.settings['pmd_install_path'] = 'invalid_path'
+        reviewed_file = FileMock(java_source_path, java_source_path)
+        self.pmd.handle_files([reviewed_file])
+        assert self.pmd.processed_files == set()
+        assert self.pmd.ignored_files == set([reviewed_file.dest_file])
+
+    def test_handle_files_invalid_ruleset(self):
+        self.pmd.settings['rulesets'] = 'invalid-ruleset-path'
         reviewed_file = FileMock(java_source_path, java_source_path)
         self.pmd.handle_files([reviewed_file])
         assert self.pmd.processed_files == set()
