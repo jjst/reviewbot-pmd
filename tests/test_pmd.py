@@ -19,11 +19,13 @@ def setup_module():
 
 java_source_path = os.path.join(os.path.dirname(__file__),
                                 'testdata/HelloWorld.java')
+js_source_path = os.path.join(os.path.dirname(__file__),
+                                'testdata/hello-http.js')
 invalid_source_path = os.path.join(os.path.dirname(__file__),
                                    'testdata/IDontExist.java')
 
 def test_violation_num_lines():
-    one_line_violation = Violation(rule='', severity=1, text='', url='',
+    one_line_violation = Violation(rule='', priority=1, text='', url='',
                                    first_line=1, last_line=1)
     assert one_line_violation.num_lines == 1
 
@@ -118,7 +120,7 @@ class TestPMDTool(object):
             'markdown': False,
             'pmd_install_path': pmd_install_path,
             'rulesets': 'java-comments',
-            'min_severity_for_issue': 5,
+            'max_priority_for_issue': 5,
         }
         self.num_violations = 2
         self.pmd.settings = default_settings
@@ -204,7 +206,7 @@ class TestPMDTool(object):
     def test_handle_files_opens_issues(self):
         reviewed_file = FileMock(
             java_source_path, java_source_path, open_issues=True)
-        self.pmd.settings['min_severity_for_issue'] = Severity.MIN
+        self.pmd.settings['max_priority_for_issue'] = Priority.MAX
         self.pmd.handle_files([reviewed_file])
         assert self.pmd.processed_files == set([reviewed_file.dest_file])
         assert self.pmd.ignored_files == set()
@@ -231,15 +233,26 @@ class TestPMDTool(object):
         assert len(reviewed_file.comments) == 2
 
     def test_post_comments_opens_issues(self):
-        self.pmd.min_severity_for_issue = Severity.MIN
+        self.pmd.max_priority_for_issue = Priority.MAX
         result = mock_result()
         reviewed_file = FileMock(java_source_path, open_issues=True)
         self.pmd.post_comments(result, reviewed_file)
         assert len(reviewed_file.comments) == 2
         assert all(c.issue == True for c in reviewed_file.comments)
 
+    def test_post_comments_custom_priority(self):
+        self.pmd.max_priority_for_issue = 3
+        result = mock_result()
+        result.violations = [
+            mock_violation(rule=str(i), priority=i) for i in Priority.values]
+        reviewed_file = FileMock(java_source_path, open_issues=True)
+        self.pmd.post_comments(result, reviewed_file)
+        assert len(reviewed_file.comments) == len(Priority.values)
+        comments_with_issues = [c for c in reviewed_file.comments if c.issue]
+        assert len(comments_with_issues) == 3
+
     def test_post_comments_open_issues_disabled(self):
-        self.pmd.min_severity_for_issue = Severity.MIN
+        self.pmd.max_priority_for_issue = Priority.MAX
         result = mock_result()
         reviewed_file = FileMock(java_source_path, open_issues=False)
         self.pmd.post_comments(result, reviewed_file)
@@ -247,11 +260,11 @@ class TestPMDTool(object):
         assert all(c.issue == False for c in reviewed_file.comments)
 
     def test_post_comments_open_issues_consecutive_violation(self):
-        self.pmd.min_severity_for_issue = Severity.MIN
+        self.pmd.max_priority_for_issue = Priority.MAX
         result = mock_result()
         v = result.violations[-1]
         consecutive_violation = Violation(
-            v.rule, v.severity, v.text,
+            v.rule, v.priority, v.text,
             v.url, v.last_line + 1, v.last_line + 5)
         result.violations.append(consecutive_violation)
         reviewed_file = FileMock(java_source_path, open_issues=True)
@@ -265,7 +278,7 @@ class TestPMDTool(object):
 
     def test_post_comments_consecutive_violations(self):
         result = mock_result()
-        result.violations = [Violation('', Severity.MAX, '', '', 1, 1,)]
+        result.violations = [Violation('', Priority.MAX, '', '', 1, 1,)]
         reviewed_file = FileMock(java_source_path, open_issues=True)
         self.pmd.post_comments(result, reviewed_file)
         assert len(reviewed_file.comments) == 1
@@ -296,6 +309,15 @@ def mock_result():
     v1 = Violation('TestRule1', 1, 'A test rule', 'dummy_url', 1, 10)
     v2 = Violation('TestRule2', 4, 'Another test rule', 'dummy_url', 14, 14)
     return Result('', [v1, v2])
+
+def mock_violation(**kwargs):
+    return Violation(
+        kwargs.get('rule', 'RuleMock'),
+        kwargs.get('priority', 1),
+        kwargs.get('text', 'A test rule'),
+        kwargs.get('url', 'http://dummy.url/'),
+        kwargs.get('first_line', 1),
+        kwargs.get('last_line', 1))
 
 
 Comment = namedtuple('Comment', ['text', 'first_line', 'num_lines', 'issue'])

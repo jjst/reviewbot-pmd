@@ -40,7 +40,7 @@ You can access reviewbot-pmd's configuration options by clicking on the tool nam
 The following optional settings are also available:
 
 * **Enable Markdown**: if enabled then PMD will post its comments using [rich text](https://www.reviewboard.org/docs/manual/2.0/users/markdown/). Note that this is an experimental feature that needs a [custom version of ReviewBot](https://github.com/jjst/ReviewBot/tree/markdown-support) with Markdown support.
-* **Minimum serverity for open issues**: if **Open issues** is enabled then this is the minimum severity (also called priority) a rule must have for reviewbot-pmd to open an issue if it finds a violation of that rule. By default reviewbot-pmd will only open an issue for violations of the highest severity level.
+* **Maximum priority for open issues**: if **Open issues** is enabled then violations with a priority equal to or below this value will cause ReviewBot to open an issue when posting a comment about this violation. By default reviewbot-pmd will only open an issue for violations of the highest priority (1).
 
 
 
