@@ -1,5 +1,4 @@
 import os
-import tempfile
 import logging
 import subprocess
 from collections import namedtuple
@@ -37,11 +36,13 @@ class SetupError(Exception):
     """
     pass
 
+
 class PMDError(Exception):
     """
     An error occuring while trying to run the PMD command line tool.
     """
     pass
+
 
 class Priority(object):
     """
@@ -51,12 +52,13 @@ class Priority(object):
     MAX = 5
     values = range(MIN, MAX + 1)
 
+
 class PMDTool(Tool):
     name = 'PMD Source Code Analyzer'
     version = '0.2'
-    description=("A Review Bot tool that runs PMD, "
-                 "a rule-set based source code analyzer that identifies "
-                 "potential problems")
+    description = ("A Review Bot tool that runs PMD, "
+                   "a rule-set based source code analyzer that identifies "
+                   "potential problems")
     options = [
         {
             'name': 'markdown',
@@ -196,7 +198,8 @@ class PMDTool(Tool):
                                    stderr=subprocess.PIPE)
         _, stderr = process.communicate()
         if stderr:
-            raise PMDError("Error running PMD command line tool, command output:\n" + stderr)
+            raise PMDError("Error running PMD command line tool, "
+                           "command output:\n" + stderr)
         return pmd_result_file_path
 
     def post_comments(self, pmd_result, reviewed_file, use_markdown=False):
@@ -205,15 +208,18 @@ class PMDTool(Tool):
                 comment = "[%s](%s): %s" % (v.rule, v.url, v.text)
             else:
                 comment = "%s: %s\n\nMore info: %s" % (v.rule, v.text, v.url)
-            open_issue = reviewed_file.review.settings['open_issues'] and \
-                         v.priority <= self.max_priority_for_issue
+            open_issue = (reviewed_file.review.settings['open_issues'] and
+                          v.priority <= self.max_priority_for_issue)
             if open_issue:
                 logging.debug("Opening issue for violation %s" % v.rule)
             reviewed_file.comment(
                 comment, v.first_line, v.num_lines, issue=open_issue)
 
+_BaseViolation = namedtuple(
+    'Violation', 'rule priority text url first_line last_line')
 
-class Violation(namedtuple('Violation', 'rule priority text url first_line last_line')):
+
+class Violation(_BaseViolation):
     __slots__ = ()
 
     def combine(self, other_violation):
@@ -225,8 +231,7 @@ class Violation(namedtuple('Violation', 'rule priority text url first_line last_
         first_line = min(self.first_line, other_violation.first_line)
         last_line = max(self.last_line, other_violation.last_line)
         return Violation(self.rule, self.priority, self.text, self.url,
-                first_line, last_line)
-
+                         first_line, last_line)
 
     @property
     def num_lines(self):
@@ -254,7 +259,8 @@ class Violation(namedtuple('Violation', 'rule priority text url first_line last_
                 groups.append(current_group)
         def combine_violations(violations):
             return reduce(lambda v1, v2: v1.combine(v2), violations)
-        return [combine_violations(violations) for violations in groups]
+        return [combine_violations(violation_group)
+                for violation_group in groups]
 
 
 class Result(object):
@@ -262,7 +268,6 @@ class Result(object):
     def __init__(self, source_file_path, violations=None):
         self.source_file_path = source_file_path
         self.violations = violations or []
-
 
     @staticmethod
     def from_xml(xml_result_path, source_file_path):
@@ -292,7 +297,3 @@ class Result(object):
             result.violations.append(
                 Violation(rule, priority, text, url, first_line, last_line))
         return result
-
-
-
-

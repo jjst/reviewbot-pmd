@@ -9,8 +9,9 @@ from nose.plugins.attrib import attr
 from reviewbotpmd.pmd import *
 import xml.etree.ElementTree as ElementTree
 
+
 def setup_module():
-    global pmd_install_path, pmd_script_path;
+    global pmd_install_path, pmd_script_path
     pmd_install_path = os.environ.get('PMD_INSTALL_PATH', '/opt/pmd/')
     pmd_script_path = os.path.join(pmd_install_path, 'bin/run.sh')
     if not os.path.exists(pmd_install_path):
@@ -20,14 +21,16 @@ def setup_module():
 java_source_path = os.path.join(os.path.dirname(__file__),
                                 'testdata/HelloWorld.java')
 js_source_path = os.path.join(os.path.dirname(__file__),
-                                'testdata/hello-http.js')
+                              'testdata/hello-http.js')
 invalid_source_path = os.path.join(os.path.dirname(__file__),
                                    'testdata/IDontExist.java')
+
 
 def test_violation_num_lines():
     one_line_violation = Violation(rule='', priority=1, text='', url='',
                                    first_line=1, last_line=1)
     assert one_line_violation.num_lines == 1
+
 
 def test_violation_is_consecutive():
     violation_text = "Text"
@@ -36,11 +39,13 @@ def test_violation_is_consecutive():
     assert v1.is_consecutive(v2)
     assert v2.is_consecutive(v1)
 
+
 def test_violation_is_consecutive_text_different():
     v1 = Violation('', 1, "Text", '', first_line=1, last_line=1)
     v2 = Violation('', 1, "Different text", '', first_line=2, last_line=2)
     assert not v1.is_consecutive(v2)
     assert not v2.is_consecutive(v1)
+
 
 def test_violation_combine():
     violation_text = "Text"
@@ -51,10 +56,12 @@ def test_violation_combine():
     assert_equals(combined.last_line, 2)
     assert_equals(combined.text, violation_text)
 
+
 def test_violation_combine_not_consecutive():
     v1 = Violation('', 1, "Banana", '', first_line=1, last_line=1)
     v2 = Violation('', 1, "Strawberry", '', first_line=2, last_line=2)
     assert_raises(ValueError, v1.combine, v2)
+
 
 def test_violation_group_consecutive():
     violation_text = "Text"
@@ -63,9 +70,10 @@ def test_violation_group_consecutive():
     v1_v2_combined = v1.combine(v2)
     assert_equals(Violation.group_consecutive([v1, v2]), [v1_v2_combined])
 
+
 def test_violation_group_consecutive_empty():
-    violation_text = "Text"
     assert_equals(Violation.group_consecutive([]), [])
+
 
 def test_violation_group_consecutive_nothing_consecutive():
     violation_text = "Text"
@@ -74,14 +82,16 @@ def test_violation_group_consecutive_nothing_consecutive():
     v3 = Violation('', 1, violation_text, '', first_line=5, last_line=10)
     assert_equals(Violation.group_consecutive([v1, v2, v3]), [v1, v2, v3])
 
+
 def test_violation_group_consecutive_2():
     violation_text = "Text"
     v1 = Violation('', 1, violation_text, '', first_line=1, last_line=1)
     v2 = Violation('', 1, violation_text, '', first_line=2, last_line=2)
     v3 = Violation('', 1, violation_text, '', first_line=5, last_line=10)
     v1_v2_combined = v1.combine(v2)
-    assert_equals(Violation.group_consecutive([v1, v2, v3]),
-        [v1_v2_combined, v3])
+    assert_equals(
+        Violation.group_consecutive([v1, v2, v3]), [v1_v2_combined, v3])
+
 
 class TestResult(object):
 
@@ -101,7 +111,6 @@ class TestResult(object):
                 stdout=devnull,
                 stderr=devnull)
         assert os.path.exists(cls.pmd_result_path)
-
 
     @classmethod
     def teardown_class(cls):
@@ -141,7 +150,6 @@ class TestPMDTool(object):
         file_elems = root.findall('file')
         return len(file_elems) == 1
 
-
     @attr('slow')
     def test_run_pmd_creates_file(self):
         results_file_path = self.pmd.run_pmd(java_source_path,
@@ -157,7 +165,8 @@ class TestPMDTool(object):
 
     @attr('slow')
     def test_run_pmd_absolute_path_to_ruleset(self):
-        ruleset_full_path = os.path.join(os.path.dirname(__file__),
+        ruleset_full_path = os.path.join(
+            os.path.dirname(__file__),
             'testdata/test_ruleset.xml')
         results_file_path = self.pmd.run_pmd(
             java_source_path, rulesets=[ruleset_full_path])
@@ -180,21 +189,22 @@ class TestPMDTool(object):
         assert not os.path.exists(invalid_source_path)
         results_file_path = self.pmd.run_pmd(
             invalid_source_path, rulesets=['java-basic'])
-        assert_raises(ElementTree.ParseError, ElementTree.parse, results_file_path)
+        assert_raises(
+            ElementTree.ParseError, ElementTree.parse, results_file_path)
 
     @attr('slow')
     def test_handle_file(self):
         reviewed_file = FileMock(java_source_path, java_source_path)
-        assert self.pmd.handle_file(reviewed_file) == True
-        assert len(reviewed_file.comments) == self.num_violations
+        assert_true(self.pmd.handle_file(reviewed_file))
+        assert_equal(len(reviewed_file.comments), self.num_violations)
 
     def test_handle_file_unsupported_file_type(self):
         reviewed_file = FileMock(dest_file='test.php')
-        assert self.pmd.handle_file(reviewed_file) == False
+        assert_false(self.pmd.handle_file(reviewed_file))
 
     def test_handle_file_invalid_file(self):
         reviewed_file = FileMock(dest_file=invalid_source_path)
-        assert self.pmd.handle_file(reviewed_file) == False
+        assert_false(self.pmd.handle_file(reviewed_file))
 
     def test_handle_files(self):
         reviewed_file = FileMock(java_source_path, java_source_path)
@@ -310,6 +320,7 @@ def mock_result():
     v2 = Violation('TestRule2', 4, 'Another test rule', 'dummy_url', 14, 14)
     return Result('', [v1, v2])
 
+
 def mock_violation(**kwargs):
     return Violation(
         kwargs.get('rule', 'RuleMock'),
@@ -342,4 +353,3 @@ class FileMock(object):
     def comment(self, text, first_line, num_lines=1, issue=None,
                 original=False):
         self.comments.append(Comment(text, first_line, num_lines, issue))
-
