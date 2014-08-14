@@ -262,7 +262,7 @@ class TestPMDTool(object):
         assert len(comments_with_issues) == 3
 
     def test_post_comments_open_issues_disabled(self):
-        self.pmd.max_priority_for_issue = Priority.MAX
+        self.pmd.max_priority_for_issue = Priority.MIN
         result = mock_result()
         reviewed_file = FileMock(java_source_path, open_issues=False)
         self.pmd.post_comments(result, reviewed_file)
@@ -270,7 +270,7 @@ class TestPMDTool(object):
         assert all(c.issue == False for c in reviewed_file.comments)
 
     def test_post_comments_open_issues_consecutive_violation(self):
-        self.pmd.max_priority_for_issue = Priority.MAX
+        self.pmd.max_priority_for_issue = Priority.MIN
         result = mock_result()
         v = result.violations[-1]
         consecutive_violation = Violation(
